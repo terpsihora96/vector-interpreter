@@ -1,0 +1,100 @@
+%{
+    #include <string>
+    #include <iostream>
+    #include <map>
+
+    #include "vector.hpp"
+
+    extern int yylex();
+    
+    void yyerror(std::string error) {
+        std::cerr << error << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    template <typename T>
+    bool exists(std::string &name, std::map<std::string, T>& map) {
+        if (map.find(name) != map.end()) {
+            return true;
+        }
+        return false;
+    }
+
+    std::map<std::string, Vector*> vect;
+    std::map<std::string, Transformation*> tr;
+%}
+
+%union {
+    float num;
+    std::string *id;
+    Vector *v;
+    Transformation* t;
+}
+
+%token num_token id_token t_id_token vector_token print_token rotate_token transform_token scale_token
+%type<id> id_token t_id_token
+%type<num> num_token
+%type<v> vector  E 
+%type<t> transf T
+
+%right '+' '-'
+%right '*'
+
+%%
+    program: program line ';'
+    | 
+    ;
+
+    line:  vector_token vectors             {  } 
+        | transform_token transformations   {  }
+        | t_id_token '=' T                  { if (exists(*$1, tr)) { tr[*$1] = $3; delete $1; } 
+                                              else { std::cout << "No transformation found." << std::endl; }
+                                            }
+        | print_token E                     { if ($2) { std::cout << *$2 << std::endl; delete $2; } } 
+        | id_token '=' E                    { if (exists(*$1, vect)) { vect[*$1]->set((*$3).getX(), (*$3).getY()); delete $1; delete $3; } 
+                                              else { std::cout << "No vector found." << std::endl; }
+                                            }
+        ;
+    
+    vectors: vectors ',' id_token vector  { vect[*$3] = $4; delete $3; }
+        | id_token vector                 { vect[*$1] = $2; delete $1; }
+        ;
+    
+    transformations: transformations ',' t_id_token transf      { tr[*$3] = $4; delete $3; }
+        | t_id_token transf                                     { tr[*$1] = $2; delete $1; }
+        ;
+
+    transf: '=' T   { $$ = $2; }
+        |           { $$ = nullptr; }
+        ;
+
+    vector:  '=' E     { $$ = $2;}
+        |              { $$ = new Vector();}
+        ; 
+
+    T: rotate_token '(' num_token ')'       { $$ = new Rotate($3); }
+        | scale_token '(' num_token ')'     { $$ = new Scale($3); }
+        | t_id_token                        { $$ = tr[*$1]; delete $1; }
+        | T '*' T                           { $$ = new Composition($1, $3); }
+        ;
+
+    E: E '+' E                              { if ($1 && $3) { $$ = new Vector(*$1 + *$3); } }
+        | E '-' E                           { if ($1 && $3) { $$ = new Vector(*$1 - *$3); } }
+        | num_token '*' E                   { if ($3)       { $$ = new Vector(*$3 * $1); } }
+        | E '*' num_token                   { if ($1)       { $$ = new Vector(*$1 * $3); } }
+        | '[' num_token ',' num_token ']'   {                 $$ = new Vector($2, $4); }
+        | '-' E                             { if ($2)       { $$ = new Vector(*$2 * (-1.0)); } }
+        | id_token                          { 
+                                              if (exists(*$1, vect)) { $$ = vect[*$1]; delete $1; } 
+                                              else { $$ = nullptr; std::cout << "Vector with a given name does not exist." << std::endl; }
+                                            }
+        |  T '(' E ')'                      { if ($3) { $$ = new Vector($1->transform(*$3)); } }
+        ;
+%%      
+
+int main()
+{
+    yyparse();
+    
+    return 0;
+}
